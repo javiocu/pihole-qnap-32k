@@ -1,0 +1,11 @@
+Pi-hole for QNAP (ARMv7 32k)
+Copyright (c) 2025 [Tu Nombre/Usuario]
+
+This product includes software developed by Pi-hole, LLC (https://pi-hole.net/).
+Original Source: https://github.com/pi-hole/pi-hole
+Original License: EUPL v1.2
+
+Modifications in this repository:
+- Custom Dockerfile for multi-stage build.
+- FTL compilation with 32KB page size linker flags.
+- Base image changed to Debian Bullseye for QNAP compatibility.
