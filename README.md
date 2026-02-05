@@ -1,40 +1,28 @@
-# Pi-hole v6 for QNAP NAS (ARMv7 - 32KB Page Size)
+# Pi-hole v6.4 for QNAP NAS (ARMv7 - 32KB Page Size)
 
-This repository contains the Dockerfile and build instructions to generate a custom **Pi-hole v6** image compatible with legacy QNAP NAS devices running on ARMv7 CPUs with **32KB memory page size**.
+Custom-built **Pi-hole FTL v6.4** image specifically designed for **QNAP NAS devices** with ARMv7 CPUs and 32KB memory page size (e.g., TS-431P3 with Annapurna Labs AL314 kernel).
 
-## ⚠️ The Problem
-Official Pi-hole Docker images (and Alpine Linux in general) are compiled assuming a standard 4KB memory page size.
-QNAP NAS models with Annapurna Labs CPUs (like the **TS-431P3**, TS-431P2, TS-231P) use a custom kernel with **32KB page size**.
-Running official images on these devices results in immediate crashes (`Segmentation Fault` or `jemalloc` errors).
+## Why This Image?
 
-## ✅ The Solution
-This project builds a custom Docker image that fixes these issues by:
-1. **Compiling FTL from source** with the linker flag `-Wl,-z,max-page-size=32768`.
-2. **Using Debian Bullseye** as the base OS (instead of Alpine) to ensure `bash`, `sqlite3`, and other system tools don't crash.
-3. **Packaging official assets** (Web Interface + CLI scripts) on top of the stable base.
+Official Pi-hole Docker images crash on QNAP NAS models with 32KB kernel page size due to binary incompatibility (Segmentation Fault). This image solves that by:
+
+- **Dynamically compiled FTL** with `max-page-size=32768` linker flag
+- **Debian Bookworm base** (upgraded from Bullseye) for modern library support
+- **Full TLS/HTTPS support** via custom-compiled mbedTLS v3.6.2
+- Includes **web interface** and **CLI tools** (`pihole -g`, gravity update)
+- Full **ARM v7** (32-bit) compatibility
 
 ## Supported Hardware
-Tested and verified on:
-- **QNAP TS-431P3** (Annapurna Labs Alpine AL314 Quad-core 1.7GHz)
 
-Likely compatible with:
-- TS-431P2, TS-231P3, TS-231P2
-- Any ARMv7 device with 32KB kernel pages.
+✅ **Tested & Verified:** QNAP TS-431P3  
+⚠️ **Likely Compatible (Untested):** TS-431P2, TS-231P3, and other ARMv7 QNAP NAS models with Annapurna Labs AL314/AL324 CPUs.
 
-## Usage
+## Quick Start
 
-### Option 1: Pull from Docker Hub (Recommended)
-You can use the pre-built image directly:
-`docker pull javiocu/pihole-qnap-32k:v6.3-debian`
+### Using Docker Compose (Recommended)
 
+Copy this YAML into **Container Station → Applications → Create**:
 
-### Option 2: Build it yourself
-If you prefer to build it from source (requires Docker Buildx for cross-compilation if building on x86):
-`docker buildx build --platform linux/arm/v7 --no-cache -t my-pihole-qnap .`
-
-## Docker Compose Example (QNAP Container Station)
-
-Use this YAML in Container Station (Application):
 ```yaml
 version: '3'
 
@@ -42,7 +30,7 @@ networks:
   qnet_static:
     driver: qnet
     driver_opts:
-      iface: "eth0" # Adapt to your interface
+      iface: "eth0" # Adapt to your interface (e.g. eth0, bond0)
     ipam:
       driver: qnet
       options:
@@ -53,7 +41,7 @@ networks:
 
 services:
   pihole:
-    image: javiocu/pihole-qnap-32k:v6.3-debian
+    image: javiocu/pihole-qnap-32k:v6.4
     container_name: pihole
     restart: unless-stopped
     networks:
@@ -61,21 +49,69 @@ services:
         ipv4_address: 192.168.1.100 # Adapt to your desired IP
     environment:
       - TZ=Europe/Madrid
+      - WEBPASSWORD=yoursecurepassword  # Set initial web admin password
     volumes:
       - /share/Container/pihole/etc:/etc/pihole
       - /share/Container/pihole/dnsmasq:/etc/dnsmasq.d
-    devices:
-      # CRITICAL: Required for certificate generation on QNAP
-      - "/dev/urandom:/dev/random"
-      - "/dev/urandom:/dev/urandom"
+    # Devices mapping is NO LONGER REQUIRED with this version
     cap_add:
       - NET_ADMIN
 ```
 
-## Disclaimer
-This is an unofficial project and is not affiliated with Pi-hole LLC.
-It is provided "as is" without warranty of any kind.
+### Configuration
 
-## License
-Based on [Pi-hole®](https://pi-hole.net).
-The source code in this repository is licensed under the **EUPL v1.2** to comply with the original Pi-hole license.
+1. Change `ipv4_address` to a free IP on your network
+2. Update volume paths (`/share/...`) to match your QNAP shared folder structure
+3. Set your timezone in `TZ` variable
+4. Set a strong password in `WEBPASSWORD`
+
+### First Run
+
+Access the web interface at:
+- **HTTP:** `http://YOUR_PIHOLE_IP/admin`
+- **HTTPS:** `https://YOUR_PIHOLE_IP/admin` (Self-signed cert by default)
+
+**Important:** On first run, update gravity (blocklists) from the web UI: **Tools → Update Gravity** to populate the database.
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TZ` | UTC | Timezone (e.g., `Europe/Madrid`) |
+| `WEBPASSWORD` | (random) | Initial web interface password |
+| `FTLCONF_webserver_port` | 80 | HTTP port (internal) |
+| `FTLCONF_dns_port` | 53 | DNS port |
+
+## Volumes
+
+| Path | Description |
+|------|-------------|
+| `/etc/pihole` | Configuration, database, certificates |
+| `/etc/dnsmasq.d` | Custom blocklists and DNS rules |
+
+## Troubleshooting
+
+**"Gravity database not available" error:**  
+Run gravity update from web UI or execute: `docker exec pihole pihole -g`
+
+**Cannot access web interface:**  
+Check firewall rules and verify IP address doesn't conflict with existing devices. Try accessing via HTTPS if HTTP fails.
+
+## Technical Details
+
+- **Base:** Debian Bookworm Slim (armhf)
+- **FTL Version:** v6.4 (compiled Feb 2026)
+- **SSL/TLS:** mbedTLS 3.6.2 (custom build) + Nettle 3.10
+- **Architecture:** ARMv7l (32-bit)
+- **Page Size:** 32KB (0x8000)
+
+## Source Code
+
+Dockerfile and build instructions available on GitHub:  
+👉 **[https://github.com/javiocu/pihole-qnap-32k](https://github.com/javiocu/pihole-qnap-32k)**
+
+## License & Credits
+
+This project is an unofficial build based on [Pi-hole®](https://pi-hole.net).
+
+The software in this container is distributed under the **EUPL v1.2** license, same as the original project.
