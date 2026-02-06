@@ -163,3 +163,7 @@ The software in this container is distributed under the **EUPL v1.2** license, s
 **Version:** v6.4 (February 2026)  
 **Maintainer:** javiocu  
 **Docker Hub:** [javiocu/pihole-qnap-32k](https://hub.docker.com/r/javiocu/pihole-qnap-32k)
+
+---
+
+**Made with ❤️ for QNAP users who want privacy-focused filtering DNS on their NAS without fucking 32k problems**
