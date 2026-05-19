@@ -1,169 +1,142 @@
-# Pi-hole v6.4 for QNAP NAS (ARMv7 - 32KB Page Size)
+Pi-hole v6 for QNAP ARMv7 32KB pagesize. Statically compiled FTL + Debian Bookworm builder + Bullseye runtime. Ready for TS-431P3 and similar.
 
-Custom-built **Pi-hole FTL v6.4** image specifically designed for **QNAP NAS devices** with ARMv7 CPUs and 32KB memory page size (e.g., TS-431P3 with Annapurna Labs AL314 kernel).
+# Pi-hole v6.6.2 for QNAP NAS (ARMv7 - 32KB Page Size)
+
+Custom-built **Pi-hole FTL v6.6.2** image specifically designed for **QNAP NAS devices** with ARMv7 CPUs and 32KB memory page size (e.g., TS-431P3 with Annapurna Labs AL314 kernel).
 
 ## Why This Image?
 
 Official Pi-hole Docker images crash on QNAP NAS models with 32KB kernel page size due to binary incompatibility (Segmentation Fault). This image solves that by:
 
-- **Statically compiled FTL** with `max-page-size=32768` linker flag
-- **Alpine Linux builder** + **Debian Bullseye runtime** for maximum compatibility
-- Includes **web interface** (lighttpd + PHP) and **CLI tools** (`pihole -g`, gravity update)
-- Uses **official Pi-hole assets** from latest release
-- Full **ARM v7** (32-bit) compatibility
+- **Statically compiled FTL** with `-static -Wl,-z,max-page-size=32768` linker flag
+- **Debian Bookworm builder** (CMake 3.25, nettle 3.10.2, mbedtls 4.0.0 from source) + **Debian Bullseye runtime**
+- Includes **web interface**, **lighttpd**, **PHP**, and **CLI tools** (`pihole`, `pihole-FTL`)
+- Full **ARMv7** (32-bit) compatibility
+- Official Pi-hole web assets from upstream
 
 ## Supported Hardware
 
-✅ **Tested & Verified:** QNAP TS-431P3  
-⚠️ **Likely Compatible (Untested):** TS-431P2, TS-231P3, and other ARMv7 QNAP NAS models with Annapurna Labs AL314/AL324 CPUs.
+✅ **Tested & Verified:** QNAP TS-431P3 (Alpine AL314 CPU)  
+⚠️ **Likely Compatible:** TS-431P2, TS-231P3, and other ARMv7 QNAP NAS models with 32KB page kernels
 
 ## Quick Start
 
-### Using Docker Compose (Recommended)
-
-Copy this YAML into **Container Station → Applications → Create**:
+### Using Docker Compose (Recommended for Container Station)
 
 ```yaml
-version: '3'
-
 networks:
   qnet_static:
     driver: qnet
     driver_opts:
-      iface: "eth0" # Adapt to your interface (e.g. eth0, bond0)
+      iface: "eth0"
     ipam:
       driver: qnet
       options:
         iface: "eth0"
       config:
-        - subnet: 192.168.1.0/24 # Adapt to your subnet
-          gateway: 192.168.1.1   # Adapt to your gateway
+        - subnet: 192.168.1.0/24
+          gateway: 192.168.1.1
 
 services:
   pihole:
-    image: javiocu/pihole-qnap-32k:v6.4
+    image: javiocu/pihole-qnap-32k:v6.6.2-debian
     container_name: pihole
     hostname: pihole
     restart: unless-stopped
     networks:
       qnet_static:
-        ipv4_address: 192.168.1.94 # Adapt to your desired IP
-    mac_address: 02-42-7B-F4-ED-94  # Optional: set fixed MAC
-    environment:
-      - TZ=Europe/Madrid
+        ipv4_address: 192.168.1.94
+    mac_address: 02:42:C0:A8:01:5E
+    cap_add:
+      - NET_ADMIN
     volumes:
       - /share/Container/pihole/etc:/etc/pihole
       - /share/Container/pihole/dnsmasq:/etc/dnsmasq.d
-    cap_add:
-      - NET_ADMIN
+    environment:
+      - TZ=Europe/Madrid
 ```
-
-### Configuration
-
-1. Change `ipv4_address` to a free IP on your network
-2. Update volume paths (`/share/...`) to match your QNAP shared folder structure
-3. Set your timezone in `TZ` variable
-4. Remove `mac_address` line or change to your desired MAC
 
 ### First Run
 
-Access the web interface at:
-- **HTTP:** `http://YOUR_PIHOLE_IP/admin`
+Access the web interface at: `http://192.168.1.94/admin`
 
-**Password:** On first run, check container logs to get the auto-generated password:
 ```bash
-docker logs pihole | grep password
+# Get the random password from logs
+docker logs pihole | grep -i password
+# Or set a new one
+docker exec -it pihole pihole setpassword
 ```
-
-Or set it manually:
-```bash
-docker exec pihole pihole -a -p yourpassword
-```
-
-**Important:** On first run, update gravity (blocklists) from the web UI: **Tools → Update Gravity** to populate the database.
-
-## Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `TZ` | UTC | Timezone (e.g., `Europe/Madrid`) |
-| `WEBPASSWORD` | (auto-generated) | Web interface password |
-
-## Volumes
-
-| Path | Description |
-|------|-------------|
-| `/etc/pihole` | Configuration, database, certificates |
-| `/etc/dnsmasq.d` | Custom blocklists and DNS rules |
 
 ## Integration with WireGuard
-
-This image works perfectly with WireGuard using `network_mode: service:pihole`. See example:
 
 ```yaml
 services:
   pihole:
-    image: javiocu/pihole-qnap-32k:v6.4
-    # ... pihole config ...
+    image: javiocu/pihole-qnap-32k:v6.6.2-debian
+    container_name: pihole
+    networks:
+      qnet_static:
+        ipv4_address: 192.168.1.94
+    # ...
 
   wireguard:
-    image: wireguard-qnap-32k:latest
+    image: your-wireguard-image:latest
     container_name: wireguard
-    restart: unless-stopped
     depends_on:
       - pihole
-    network_mode: service:pihole  # Shares network with Pi-hole
-    privileged: true
-    # ... wireguard config ...
+    network_mode: service:pihole
+    # ...
 ```
 
-## Troubleshooting
+## Upgrading from v6.4
 
-**"Gravity database not available" error:**  
-Run gravity update from web UI or execute: `docker exec pihole pihole -g`
+```bash
+cd /share/Container/pihole
+docker-compose down
+cp -r etc etc-backup-$(date +%Y%m%d)
+# Edit docker-compose.yml → change image to v6.6.2-debian
+docker-compose up -d
+```
 
-**Cannot access web interface:**  
-Check firewall rules and verify IP address doesn't conflict with existing devices.
-
-**Segmentation Fault (exit code 139):**  
-You're using the wrong image. Make sure you're using `javiocu/pihole-qnap-32k:v6.4` and not the official `pihole/pihole` image.
+All settings, blocklists, and custom DNS entries are preserved.
 
 ## Technical Details
 
-- **Builder:** Alpine Linux 3.20 (musl libc)
-- **Runtime:** Debian Bullseye Slim (armhf)
-- **FTL Version:** v6.4 (static binary, compiled Feb 2026)
-- **Web Server:** lighttpd + PHP-CGI
-- **Architecture:** ARMv7l (32-bit)
-- **Page Size:** 32KB (0x8000)
-- **Compilation:** Static linking with `-Wl,-z,max-page-size=32768`
+| | |
+|---|---|
+| **FTL Version** | v6.6.2 |
+| **Builder** | Debian Bookworm Slim (CMake 3.25) |
+| **Runtime** | Debian Bullseye Slim |
+| **nettle** | 3.10.2 (compiled from source) |
+| **mbedtls** | 4.0.0 (compiled from source) |
+| **Linking** | Static (`-static -Wl,-z,max-page-size=32768`) |
+| **Web Server** | lighttpd + PHP |
+| **Architecture** | linux/arm/v7 |
 
-## Migration from v6.3
+## Changelog
 
-Simply change the image tag in your docker-compose.yml:
-```yaml
-image: javiocu/pihole-qnap-32k:v6.4  # Changed from v6.3
-```
+### v6.6.2-debian (2026-05)
+- Updated to Pi-hole FTL v6.6.2
+- Changed builder to Debian Bookworm (CMake 3.25 nativo)
+- nettle 3.10.2 compilada desde fuentes (requiere balloon.h de nettle ≥3.9)
+- mbedtls 4.0.0 compilada desde fuentes
+- Linkado 100% estático verificado (`ldd: not a dynamic executable`)
+- Runtime Debian Bullseye preservado
 
-Your configuration and databases are fully compatible (no migration needed).
+### v6.4 (2026-02)
+- Updated to Pi-hole FTL v6.4
+- Alpine-based static compilation
 
-## Source Code
-
-Dockerfile and build instructions available on GitHub:  
-👉 **[https://github.com/javiocu/pihole-qnap-32k](https://github.com/javiocu/pihole-qnap-32k)**
+### v6.3-debian (2025-12)
+- Initial release with 32KB page size support
 
 ## License & Credits
 
-This project is an unofficial build based on [Pi-hole®](https://pi-hole.net).
+Unofficial build of [Pi-hole®](https://pi-hole.net) for QNAP compatibility.  
+Pi-hole® is licensed under the **EUPL v1.2**.  
+Not affiliated with or endorsed by Pi-hole LLC.
 
-The software in this container is distributed under the **EUPL v1.2** license, same as the original project.
+## Source & Support
 
----
-
-**Version:** v6.4 (February 2026)  
-**Maintainer:** javiocu  
-**Docker Hub:** [javiocu/pihole-qnap-32k](https://hub.docker.com/r/javiocu/pihole-qnap-32k)
-
----
-
-**Made with ❤️ for QNAP users who want privacy-focused filtering DNS on their NAS without fucking 32k problems**
+- 🔧 Build issues: [GitHub](https://github.com/javiocu/pihole-qnap-32k/issues)
+- 💬 General Pi-hole: [discourse.pi-hole.net](https://discourse.pi-hole.net/)
